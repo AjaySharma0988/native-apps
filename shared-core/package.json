@@ -1,0 +1,43 @@
+{
+  "name": "@chatty/shared-core",
+  "version": "1.0.0",
+  "description": "Platform-agnostic shared business logic for Chatty — used by Electron and React Native",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/esm/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": "./dist/types/index.js",
+    "./constants": "./dist/constants/index.js",
+    "./api": "./dist/api/axiosFactory.js",
+    "./socket": "./dist/socket/socketManager.js",
+    "./utils": "./dist/utils/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json",
+    "build:watch": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "keywords": [
+    "chatty",
+    "shared",
+    "cross-platform",
+    "electron",
+    "react-native"
+  ],
+  "license": "MIT"
+}

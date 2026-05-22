@@ -1,0 +1,20 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": [],
+    "lib": ["es2020", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@chatty/shared-core": ["../shared-core/src/index.ts"],
+      "@chatty/shared-core/*": ["../shared-core/src/*"]
+    }
+  },
+  "include": ["src/**/*", "src/declarations.d.ts", "index.js"],
+  "exclude": ["node_modules"]
+}

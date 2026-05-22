@@ -1,0 +1,79 @@
+{
+  "name": "chatty-desktop",
+  "version": "1.0.1",
+  "description": "Chatty — Native Desktop App powered by Electron",
+  "main": "main/main.js",
+  "scripts": {
+    "electron:dev": "concurrently \"npm run renderer:dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "renderer:dev": "vite --config vite.config.js --port 3000",
+    "renderer:build": "vite build --config vite.config.js",
+    "electron:build": "npm run renderer:build && electron-builder",
+    "electron": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "chatty",
+    "electron",
+    "desktop",
+    "chat"
+  ],
+  "author": "Chatty",
+  "license": "MIT",
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@chatty/shared-core": "file:../shared-core",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.5.0",
+    "axios": "^1.7.7",
+    "concurrently": "^8.2.2",
+    "daisyui": "^4.12.14",
+    "date-fns": "^4.1.0",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "framer-motion": "^12.40.0",
+    "idb": "^8.0.3",
+    "lucide-react": "^0.459.0",
+    "postcss": "^8.5.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-easy-crop": "^5.5.7",
+    "react-hot-toast": "^2.6.0",
+    "react-qr-code": "^2.0.21",
+    "react-router-dom": "^6.28.0",
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "^3.4.19",
+    "vite": "^6.2.6",
+    "wait-on": "^7.2.0",
+    "zustand": "^5.0.1"
+  },
+  "build": {
+    "appId": "com.chatty.desktop",
+    "productName": "Chatty",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "package.json",
+      "main/**/*",
+      "renderer/dist/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/electron-store/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  }
+}

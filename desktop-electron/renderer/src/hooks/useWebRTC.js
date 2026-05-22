@@ -1,0 +1,336 @@
+/**
+ * useWebRTC — production-grade WebRTC hook for call popup window.
+ *
+ * Responsibilities:
+ *  1. Acquire local media (audio + video)
+ *  2. Create RTCPeerConnection with ICE buffering
+ *  3. Create / set offer/answer
+ *  4. Handle ICE candidates (queued until remote description is set)
+ *  5. Expose controls: mute, camera, end
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchIceServers, ICE_SERVERS } from "../constants/webrtc";
+
+// ── ICE / STUN / TURN configuration moved to constants/webrtc.js ─────────────
+
+export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer }) => {
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [status, setStatus] = useState("initializing"); // initializing|connecting|active|ended|error
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const pendingCandidates = useRef([]);
+  const remoteDescSet = useRef(false);
+
+  // ── Add buffered ICE candidates once remote description is set ────────────
+  const drainCandidates = useCallback(async () => {
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
+    remoteDescSet.current = true;
+    
+    const candidates = [...pendingCandidates.current];
+    pendingCandidates.current = [];
+    
+    if (candidates.length === 0) return;
+    console.log(`[useWebRTC] Draining ${candidates.length} buffered candidates`);
+
+    for (const c of candidates) {
+      try {
+        if (c) {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          console.log("[useWebRTC] Added buffered ICE candidate");
+        }
+      } catch (e) {
+        console.warn("[useWebRTC] drainCandidates error:", e.message);
+      }
+    }
+  }, []);
+
+  // ── Handle incoming ICE candidate ─────────────────────────────────────────
+  const handleRemoteIce = useCallback(async (candidate) => {
+    if (!pcRef.current) return;
+    console.log("[useWebRTC] Received remote ICE candidate");
+    if (pcRef.current.remoteDescription) {
+      try { 
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); 
+        console.log("[useWebRTC] Added remote ICE candidate");
+      }
+      catch (e) { console.warn("[useWebRTC] addIceCandidate error:", e.message); }
+    } else {
+      console.log("[useWebRTC] Buffering remote ICE candidate");
+      pendingCandidates.current.push(candidate);
+    }
+  }, []);
+
+  const waitForIce = (pc) => new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
+    pc.addEventListener("icegatheringstatechange", check);
+    setTimeout(resolve, 2000);
+  });
+
+  // ── Add answer from peer (caller side) ───────────────────────────────────
+  const handleRemoteAnswer = useCallback(async (answer) => {
+    if (!pcRef.current) return;
+    await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+    await drainCandidates();
+  }, [drainCandidates]);
+
+  // ── Main initializer ─────────────────────────────────────────────────────
+  const initialize = useCallback(async () => {
+    if (!socket) return;
+    setStatus("initializing");
+
+    try {
+      // 1. Get user media with optimized audio constraints (WhatsApp-like quality)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+
+          // Step 1: Optimized constraints for WhatsApp-level clarity
+          channelCount: 1,
+          sampleRate: 48000,
+          sampleSize: 16
+        },
+        video: callType === "video",
+      });
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+
+      // Verify and optimize audio track settings
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        if ("contentHint" in audioTrack) {
+          audioTrack.contentHint = "speech";
+        }
+        console.log("[WebRTC] Audio Track Settings (Optimized):", audioTrack.getSettings());
+      }
+
+      // 2. Create peer connection with fresh TURN credentials (1-hour TTL)
+      // fetchIceServers() fetches backend-signed credentials — prevents 60 s TURN expiry.
+      const iceConfig = await fetchIceServers();
+      const pc = new RTCPeerConnection(iceConfig);
+      pcRef.current = pc;
+
+      // Add local tracks and enhance Opus codec for audio
+      stream.getTracks().forEach((t) => {
+        const sender = pc.addTrack(t, stream);
+        
+        if (t.kind === "audio") {
+          // Enhance Opus codec by forcing higher bitrate
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            // Step 4: Enhance Opus codec (WhatsApp quality)
+            params.encodings[0].maxBitrate = 64000;
+            params.encodings[0].priority = "high";
+            params.encodings[0].networkPriority = "high";
+            sender.setParameters(params);
+            console.log("[WebRTC] Audio optimized: 64kbps, high priority");
+          } catch (e) {
+            console.warn("[WebRTC] Failed to enhance audio bitrate:", e);
+          }
+        }
+      });
+
+      // Prioritize Opus codec in SDP (if browser supports setCodecPreferences)
+      if (typeof RTCRtpSender !== "undefined" && RTCRtpSender.getCapabilities) {
+        const codecs = RTCRtpSender.getCapabilities("audio")?.codecs;
+        if (codecs) {
+          const opusCodecs = codecs.filter(c => c.mimeType.toLowerCase() === "audio/opus");
+          if (opusCodecs.length > 0) {
+            pc.getTransceivers().forEach(t => {
+              if (t.sender && t.sender.track && t.sender.track.kind === "audio" && t.setCodecPreferences) {
+                try {
+                  t.setCodecPreferences(opusCodecs);
+                  console.log("[WebRTC] Prioritized Opus codec");
+                } catch(e) {
+                  console.warn("[WebRTC] setCodecPreferences failed:", e);
+                }
+              }
+            });
+          }
+        }
+      }
+
+      // Remote track → remote stream
+      pc.ontrack = (e) => {
+        if (e.streams?.[0]) setRemoteStream(e.streams[0]);
+      };
+
+      // ICE candidates → send to peer via socket
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          console.log("[useWebRTC] ICE sent");
+          socket.emit("ice-candidate", { to: peerId, candidate: e.candidate });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        console.log("[WebRTC] Connection state:", s);
+        if (s === "connected") setStatus("active");
+        if (s === "failed") {
+          console.warn("[WebRTC] Connection failed, attempting ICE restart");
+          if (pc.restartIce) pc.restartIce();
+          else setStatus("error");
+        }
+        // "disconnected" is TRANSIENT — do NOT end the call here.
+        // The peer may be switching networks; ICE will recover automatically.
+        // Only "closed" is truly terminal.
+        if (s === "disconnected") {
+          console.warn("[WebRTC] Connection temporarily disconnected — waiting for recovery");
+        }
+        if (s === "closed") setStatus("ended");
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        console.log("[WebRTC] ICE state:", s);
+        if (s === "connected" || s === "completed") setStatus("active");
+        if (s === "failed") {
+          console.warn("[WebRTC] ICE failed — attempting ICE restart");
+          // restartIce() triggers onnegotiationneeded which re-sends offer via socket
+          if (pc.restartIce) pc.restartIce();
+          else setStatus("error");
+        }
+        // "disconnected" is TRANSIENT — the browser will attempt reconnection.
+        // Start a 7-second grace-period: if still disconnected, restart ICE.
+        if (s === "disconnected") {
+          console.warn("[WebRTC] ICE temporarily disconnected — starting recovery timer");
+          setTimeout(() => {
+            if (!pcRef.current) return;
+            const current = pcRef.current.iceConnectionState;
+            if (current === "disconnected" || current === "failed") {
+              console.warn("[WebRTC] ICE still disconnected after grace period — restarting ICE");
+              if (pcRef.current.restartIce) pcRef.current.restartIce();
+            }
+          }, 7000);
+        }
+        // Only "closed" is terminal
+        if (s === "closed") setStatus("ended");
+      };
+
+      pc.onicegatheringstatechange = () => {
+        console.log("[useWebRTC] ICE gathering state:", pc.iceGatheringState);
+      };
+
+      // Failsafe: if we restart ICE, we need to handle onnegotiationneeded
+      pc.onnegotiationneeded = async () => {
+        try {
+          if (pc.signalingState !== "stable") return;
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("call:renegotiate", { callId: peerId, offer });
+        } catch (err) {
+          console.warn("[WebRTC] Renegotiation error:", err);
+        }
+      };
+
+      // 3. Offer/Answer flow
+      if (isInitiator) {
+        setStatus("connecting");
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        console.log("[useWebRTC] Offer sent");
+        socket.emit("call-user", { to: peerId, offer: pc.localDescription, callType, callerInfo: null });
+      } else {
+        // Receiver: set remote offer first
+        if (initialOffer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(initialOffer));
+          console.log("[useWebRTC] Offer received & set");
+          await drainCandidates();
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          console.log("[useWebRTC] Answer sent");
+          socket.emit("call-accepted", { to: peerId, answer: pc.localDescription });
+          setStatus("connecting");
+        }
+      }
+    } catch (err) {
+      console.error("[WebRTC] init error:", err);
+      setStatus("error");
+      setErrorMsg(err.message);
+    }
+  }, [socket, callType, peerId, isInitiator, initialOffer, drainCandidates]);
+
+  // Run on mount
+  useEffect(() => {
+    initialize();
+
+    // ── Periodic ICE state diagnostics (every 10 s) ───────────────────────
+    // Helps detect silent TURN session expiry without ending the call.
+    const iceMonitor = setInterval(() => {
+      if (pcRef.current) {
+        console.log(
+          "[WebRTC] Health check — ICE:", pcRef.current.iceConnectionState,
+          "| Connection:", pcRef.current.connectionState,
+          "| Signaling:", pcRef.current.signalingState
+        );
+      }
+    }, 10000);
+
+    // ── Page visibility: log only, never stop the call ────────────────────
+    // Browsers throttle inactive tabs, which can momentarily affect ICE
+    // timers. We log the event but take NO destructive action.
+    const handleVisibility = () => {
+      console.log("[WebRTC] Tab visibility changed — hidden:", document.hidden,
+        "| ICE:", pcRef.current?.iceConnectionState ?? "n/a");
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(iceMonitor);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      pcRef.current?.close();
+      pcRef.current = null;
+      pendingCandidates.current = [];
+      remoteDescSet.current = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  const toggleMute = useCallback(() => {
+    if (!localStream) return;
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled;
+      setIsMuted(!audioTrack.enabled);
+    }
+  }, [localStream]);
+
+  const toggleCamera = useCallback(() => {
+    if (!localStream) return;
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled;
+      setIsCameraOff(!videoTrack.enabled);
+    }
+  }, [localStream]);
+
+  const stopAll = useCallback(() => {
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    pcRef.current?.close();
+    pcRef.current = null;
+    setStatus("ended");
+  }, []);
+
+  return {
+    localStream, remoteStream,
+    isMuted, isCameraOff,
+    status, errorMsg,
+    toggleMute, toggleCamera, stopAll,
+    handleRemoteIce, handleRemoteAnswer, drainCandidates,
+  };
+};
