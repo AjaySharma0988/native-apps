@@ -11,7 +11,7 @@ export function formatMessageTime(date) {
  * or a default avatar if the URL is missing.
  */
 export function getProfilePicUrl(user) {
-  if (!user || !user.profilePic) return "/avatar.png";
+  if (!user || !user.profilePic) return "avatar.png";
   
   // Use updatedAt if available, otherwise just use current time 
   // to ensure we always try to get the freshest data after a reload/sync.

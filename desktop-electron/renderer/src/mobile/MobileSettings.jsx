@@ -202,8 +202,8 @@ const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern,
                       className="absolute inset-0 opacity-[0.2]" 
                       style={{ 
                         backgroundImage: pattern === 'whatsapp' 
-                          ? `url("/patterns/whatsapp.png")` 
-                          : `url('/patterns/${pattern}.svg')`, 
+                          ? `url("patterns/whatsapp.png")` 
+                          : `url('patterns/${pattern}.svg')`, 
                         backgroundSize: pattern === 'whatsapp' ? '200px' : 'auto',
                         backgroundRepeat: 'repeat'
                       }} 
@@ -261,8 +261,8 @@ const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern,
                       className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
                       style={{ 
                         backgroundImage: chatPattern === 'whatsapp' 
-                          ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
-                          : `url('/patterns/${chatPattern}.svg')`,
+                          ? `url("patterns/whatsapp.png")` 
+                          : `url('patterns/${chatPattern}.svg')`,
                         backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
                         backgroundRepeat: 'repeat',
                       }}
@@ -481,7 +481,7 @@ const MobileSettings = ({ onBack }) => {
           className="w-full flex items-center gap-4 px-4 py-5 border-b border-base-content/10 text-left hover:bg-base-200 active:bg-base-300 transition-colors"
         >
           <img
-            src={authUser?.profilePic || "/avatar.png"}
+            src={authUser?.profilePic || "avatar.png"}
             alt={authUser?.fullName}
             className="size-16 rounded-full object-cover"
           />

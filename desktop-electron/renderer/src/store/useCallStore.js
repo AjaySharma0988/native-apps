@@ -397,7 +397,10 @@ export const useCallStore = create((set, get) => ({
   handleIncomingCall: (data) => {
     // FATAL BUG GUARD: The popup window should NEVER handle incoming calls
     // or play ringtones. All call signaling must happen in the main window.
-    if (window.location.pathname === "/call") return;
+    // With HashRouter, the route lives in window.location.hash (e.g. #/call)
+    // rather than window.location.pathname, so we check hash instead.
+    const isCallWindow = window.location.pathname === "/call" || window.location.hash.includes("/call");
+    if (isCallWindow) return;
 
     const { activeCall, outgoingCall, incomingCall } = get();
     if (activeCall || outgoingCall || (incomingCall && incomingCall.from !== data.from)) {
@@ -410,6 +413,11 @@ export const useCallStore = create((set, get) => ({
 
     playRingtone();
     set({ incomingCall: data, isCaller: false });
+
+    // Restore window from tray/minimize so user sees the ring
+    if (window.electronAPI?.call?.focusForIncomingCall) {
+      window.electronAPI.call.focusForIncomingCall();
+    }
 
     // Wire back to peer that it has reached the client and is ringing
     import("./useAuthStore").then(({ useAuthStore }) => {

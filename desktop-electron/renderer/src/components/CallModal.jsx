@@ -74,8 +74,10 @@ const CallModal = () => {
   }
 
   if (!incomingCall) return null;
-  // FATAL BUG GUARD: Never render the modal overlay inside the dedicated Call Popup Window router
-  if (window.location.pathname === "/call") return null;
+  // FATAL BUG GUARD: Never render the modal overlay inside the dedicated Call Popup Window.
+  // With HashRouter, the route lives in window.location.hash (e.g. #/call), not pathname.
+  const isCallWindow = window.location.pathname === "/call" || window.location.hash.includes("/call");
+  if (isCallWindow) return null;
 
   const isVideo = incomingCall.callType === "video";
   const callerInfo = incomingCall.callerInfo;

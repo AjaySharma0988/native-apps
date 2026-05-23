@@ -80,7 +80,7 @@ const PanelContent = ({
   editingAbout, aboutValue, setAboutValue, setEditingAbout, handleSaveAbout,
   isUpdatingProfile, isCropLoading, handleFileSelect, onDeleteClick
 }) => {
-  const avatarSrc = selectedImg || authUser?.profilePic || "/avatar.png";
+  const avatarSrc = selectedImg || authUser?.profilePic || "avatar.png";
   const joinDate = authUser?.createdAt?.split("T")[0] || "—";
 
   switch (tab) {
@@ -380,7 +380,7 @@ const ProfilePage = () => {
         {/* Mini avatar card */}
         <div className="px-4 py-4 border-b border-base-300 flex items-center gap-3 flex-shrink-0">
           <img
-            src={selectedImg || authUser?.profilePic || "/avatar.png"}
+            src={selectedImg || authUser?.profilePic || "avatar.png"}
             alt="avatar"
             className="size-10 rounded-full object-cover ring-2 ring-primary/30"
           />

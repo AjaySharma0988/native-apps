@@ -22,10 +22,50 @@ export const useChatStore = create((set, get) => ({
       set({ isUsersLoading: true });
     }
 
+    const oldUnreads = {};
+    (get().users || []).forEach((u) => {
+      oldUnreads[u._id] = u.unreadCount || 0;
+    });
+
     try {
       const res = await axiosInstance.get("/messages/users");
-      set({ users: res.data });
-      idb.saveUsers(res.data);
+      const newUsers = res.data;
+      set({ users: newUsers });
+      idb.saveUsers(newUsers);
+
+      // Trigger alerts and notifications for any missed offline stacked messages
+      const authUser = useAuthStore.getState().authUser;
+      const authUserId = authUser?._id;
+      if (authUserId) {
+        newUsers.forEach((u) => {
+          const previousUnread = oldUnreads[u._id] || 0;
+          const currentUnread = u.unreadCount || 0;
+
+          if (currentUnread > previousUnread && u.lastMessage && u.lastMessage.senderId !== authUserId) {
+            const senderName = u.fullName || "New Message";
+            const messageBody = u.lastMessage.text || (u.lastMessage.image ? "Sent an image" : "Sent a message");
+
+            // Native OS notification (reliable in background/tray)
+            if (window.electronAPI?.notifications?.show) {
+              window.electronAPI.notifications.show({
+                title: senderName,
+                body: messageBody,
+                icon: u.profilePic || "avatar.png",
+                silent: true,
+              });
+            }
+
+            // Play sound if notification settings allow
+            const settings = authUser.notificationSettings || { soundEnabled: true, soundType: "default" };
+            if (settings.soundEnabled && settings.soundType !== "mute") {
+              try {
+                let audio = new Audio(settings.soundType === "default" ? "sounds/Message sound.mp3" : settings.customSoundUrl);
+                audio.play().catch(() => {});
+              } catch (e) {}
+            }
+          }
+        });
+      }
     } catch (error) {
       if (!cachedUsers || cachedUsers.length === 0) {
         toast.error(error.response?.data?.message || "Failed to load users");
@@ -354,7 +394,14 @@ export const useChatStore = create((set, get) => ({
         const messageBody = newMessage.text || (newMessage.image ? "Sent an image" : "Sent a message");
 
         if (settings.popupsEnabled) {
-          if (Notification.permission === "granted" && isTabHidden) {
+          if (window.electronAPI?.notifications?.show) {
+            window.electronAPI.notifications.show({
+              title: senderName,
+              body: messageBody,
+              icon: sender?.profilePic || "/avatar.png",
+              silent: true,
+            });
+          } else if (Notification.permission === "granted" && isTabHidden) {
             const notification = new Notification(senderName, {
               body: messageBody,
               icon: sender?.profilePic || "/avatar.png",

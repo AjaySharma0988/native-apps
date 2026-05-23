@@ -45,6 +45,11 @@ export const useStatusStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
 
+    // Clear existing listeners to prevent duplicates
+    socket.off("status:created");
+    socket.off("status:deleted");
+    socket.off("status:view");
+
     socket.on("status:created", (newStatus) => {
       set((state) => ({ statuses: [newStatus, ...state.statuses] }));
     });
@@ -67,8 +72,8 @@ export const useStatusStore = create((set, get) => ({
   unsubscribeFromStatuses: () => {
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
-    socket.off("status:new");
-    socket.off("status:delete");
+    socket.off("status:created");
+    socket.off("status:deleted");
     socket.off("status:view");
   }
 }));

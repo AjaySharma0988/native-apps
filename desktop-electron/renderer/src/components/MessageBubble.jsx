@@ -333,7 +333,7 @@ export const MessageBubble = ({
               </div>
             </div>
             <div className="w-[42px] h-[42px] rounded-full overflow-hidden flex-shrink-0 bg-base-300">
-              <img src={isSent ? "/avatar.png" : getProfilePicUrl(selectedUser)} className="w-full h-full object-cover" />
+              <img src={isSent ? "avatar.png" : getProfilePicUrl(selectedUser)} className="w-full h-full object-cover" />
             </div>
           </div>
         )}

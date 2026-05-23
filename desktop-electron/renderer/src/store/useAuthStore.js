@@ -12,6 +12,9 @@ const getSocketURL = () => {
 
 const BASE_URL = getSocketURL();
 
+let onlineHandler = null;
+let powerResumeCleanup = null;
+
 const SAFE_USER_FIELDS = ["_id", "fullName", "email", "profilePic", "about", "privacy", "deletionScheduledAt", "notificationSettings"];
 const persistUser = async (user) => {
   const safe = {};
@@ -38,7 +41,10 @@ export const useAuthStore = create((set, get) => ({
   checkAuth: async () => {
     if (window.electronAPI) {
       const cachedUser = await window.electronAPI.storeGet("chatty_user");
-      if (cachedUser) set({ authUser: cachedUser });
+      if (cachedUser) {
+        set({ authUser: cachedUser });
+        get().connectSocket();
+      }
     }
 
     try {
@@ -217,14 +223,32 @@ export const useAuthStore = create((set, get) => ({
     const newSocket = io(BASE_URL, {
       query: { userId: authUser._id },
       auth: { token },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
     });
     newSocket.connect();
     set({ socket: newSocket });
 
     newSocket.on("connect", () => {
-      import("./useChatStore").then((mod) => {
-        mod.useChatStore.getState().syncPendingMessages?.();
+      console.log("[Socket] Connected to server successfully");
+      import("./useChatStore").then(({ useChatStore }) => {
+        const chatStore = useChatStore.getState();
+        chatStore.syncPendingMessages?.();
+        chatStore.subscribeToGlobalEvents();
+        chatStore.subscribeToMessages();
+        
+        // Recover any missed messages and offline state updates
+        chatStore.getUsers();
+        if (chatStore.selectedUser) {
+          chatStore.getMessages(chatStore.selectedUser._id);
+        }
+      });
+      import("./useStatusStore").then(({ useStatusStore }) => {
+        useStatusStore.getState().subscribeToStatuses();
       });
     });
 
@@ -326,9 +350,40 @@ export const useAuthStore = create((set, get) => ({
       get().disconnectSocket();
       toast.error(message || "Your session has been terminated.", { id: "session-terminated", duration: 5000 });
     });
+
+    // Network recovery listener
+    if (!onlineHandler) {
+      onlineHandler = () => {
+        const { socket } = get();
+        if (socket && !socket.connected) {
+          console.log("[Socket] Browser online, reconnecting socket...");
+          socket.connect();
+        }
+      };
+      window.addEventListener("online", onlineHandler);
+    }
+
+    // Power resume (Electron only)
+    if (window.electronAPI?.app?.onPowerResume && !powerResumeCleanup) {
+      powerResumeCleanup = window.electronAPI.app.onPowerResume(() => {
+        const { socket } = get();
+        if (socket && !socket.connected) {
+          console.log("[Socket] System woke up, reconnecting socket...");
+          socket.connect();
+        }
+      });
+    }
   },
 
   disconnectSocket: () => {
+    if (onlineHandler) {
+      window.removeEventListener("online", onlineHandler);
+      onlineHandler = null;
+    }
+    if (powerResumeCleanup) {
+      powerResumeCleanup();
+      powerResumeCleanup = null;
+    }
     if (get().socket?.connected) get().socket.disconnect();
     set({ socket: null });
   },

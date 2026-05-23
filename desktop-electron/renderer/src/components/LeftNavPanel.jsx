@@ -95,7 +95,7 @@ const LeftNavPanel = () => {
             className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150 overflow-hidden border-2 ${location.pathname === "/profile" ? "border-primary" : "border-transparent hover:border-primary"}`}
           >
             <img
-              src={authUser?.profilePic || "/avatar.png"}
+              src={authUser?.profilePic || "avatar.png"}
               alt={authUser?.fullName || "Profile"}
               className="size-8 rounded-lg object-cover"
             />

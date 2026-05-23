@@ -280,7 +280,7 @@ const MobileChatPage = () => {
           onClick={() => navigateMobile.fn && navigateMobile.fn("profile")}
         >
           <img
-            src={selectedUser.profilePic || "/avatar.png"}
+            src={selectedUser.profilePic || "avatar.png"}
             alt=""
             className="size-10 rounded-full object-cover"
           />
@@ -335,8 +335,8 @@ const MobileChatPage = () => {
             className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
             style={{ 
               backgroundImage: chatPattern === 'whatsapp' 
-                ? `url("/patterns/whatsapp.png")` 
-                : `url('/patterns/${chatPattern}.svg')`,
+                ? `url("patterns/whatsapp.png")` 
+                : `url('patterns/${chatPattern}.svg')`,
               backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
               backgroundRepeat: 'repeat',
             }}

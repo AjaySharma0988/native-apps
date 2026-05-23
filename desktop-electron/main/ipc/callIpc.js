@@ -28,7 +28,7 @@ function registerCallIpc(ipcMain) {
    */
   ipcMain.handle("call:open-window", (_, params) => {
     const callUrl = isDev
-      ? `${RENDERER_URL}/call?${params}`
+      ? `${RENDERER_URL}/#/call?${params}`
       : `file://${RENDERER_FILE.replace("index.html", "")}index.html#/call?${params}`;
     openCallWindow(callUrl);
     return true;
@@ -56,6 +56,31 @@ function registerCallIpc(ipcMain) {
   ipcMain.handle("call:focus-window", () => {
     focusCallWindow();
     return true;
+  });
+
+  /** Restore and focus the main window for an incoming call */
+  ipcMain.handle("call:focus-for-incoming", () => {
+    const mainWindow = global.mainWindow;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.focus();
+      mainWindow.flashFrame(true);
+
+      // Reset alwaysOnTop after 3 seconds so it doesn't stay permanently on top
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(false);
+        }
+      }, 3000);
+      return true;
+    }
+    return false;
   });
 
   /**

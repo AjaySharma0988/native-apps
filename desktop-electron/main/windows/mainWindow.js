@@ -26,8 +26,12 @@ function createMainWindow({ isDev, RENDERER_URL, RENDERER_FILE }) {
       nodeIntegration: false,   // Security: no require() in renderer
       webSecurity: true,
       allowRunningInsecureContent: false,
+      backgroundThrottling: false,
     },
   });
+
+  // Runtime API reinforcement to prevent background throttling
+  win.webContents.setBackgroundThrottling(false);
 
   // Load renderer
   if (isDev) {

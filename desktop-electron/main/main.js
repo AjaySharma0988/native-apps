@@ -13,7 +13,7 @@
  * - Call windows use ipcMain↔ipcRenderer instead of web's BroadcastChannel
  */
 
-const { app, BrowserWindow, ipcMain, shell, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor } = require("electron");
 const path = require("path");
 
 // ── Import sub-modules ──────────────────────────────────────────────────────
@@ -35,6 +35,11 @@ global.RENDERER_FILE = RENDERER_FILE;
 
 let mainWindow = null;
 let tray = null;
+
+// ── Command line switches to prevent background throttling ───────────────────
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
 
 // ── Single instance lock ─────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -66,6 +71,18 @@ app.whenReady().then(async () => {
   mainWindow = createMainWindow({ isDev, RENDERER_URL, RENDERER_FILE });
   global.mainWindow = mainWindow;
 
+  // Listen to power state changes to restore connection when computer resumes
+  powerMonitor.on("resume", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("lifecycle:power-resume");
+    }
+  });
+  powerMonitor.on("suspend", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("lifecycle:power-suspend");
+    }
+  });
+
   // Create system tray
   tray = createTray(mainWindow);
 
@@ -82,6 +99,7 @@ app.whenReady().then(async () => {
       overrideBrowserWindowOptions: {
         width: 1000,
         height: 700,
+        alwaysOnTop: true,
         autoHideMenuBar: true,
         webPreferences: {
           nodeIntegration: false,

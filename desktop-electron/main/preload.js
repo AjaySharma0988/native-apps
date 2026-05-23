@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     disablePip: () => ipcRenderer.invoke("call:disable-pip"),
     /** Focus the call window */
     focusWindow: () => ipcRenderer.invoke("call:focus-window"),
+    /** Bring the main window back up for an incoming call */
+    focusForIncomingCall: () => ipcRenderer.invoke("call:focus-for-incoming"),
     /** Send a message TO the call window (replaces BroadcastChannel) */
     sendToCallWindow: (message) => ipcRenderer.invoke("call:send-to-window", message),
     /** Send a message FROM the call window to the main window */
@@ -95,5 +97,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getVersion: () => ipcRenderer.invoke("app:version"),
     getPlatform: () => process.platform,
     isElectron: true,
+    onPowerResume: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on("lifecycle:power-resume", handler);
+      return () => ipcRenderer.off("lifecycle:power-resume", handler);
+    },
+    onPowerSuspend: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on("lifecycle:power-suspend", handler);
+      return () => ipcRenderer.off("lifecycle:power-suspend", handler);
+    },
   },
 });
