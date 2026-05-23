@@ -13,6 +13,8 @@ export const useChatStore = create((set, get) => ({
   isFetchingMore: false,
   isSendingMessage: false,
   hasMore: true,
+  pendingStatusUpdates: {},
+  lastSeenTimes: {},
 
   getUsers: async () => {
     const cachedUsers = await idb.getUsers();
@@ -181,6 +183,13 @@ export const useChatStore = create((set, get) => ({
       const res = await axiosInstance.post(`/messages/send/${targetUserId}`, messageData);
       const newMessage = res.data;
 
+      const { pendingStatusUpdates, lastSeenTimes } = get();
+      if (lastSeenTimes[targetUserId] && new Date(newMessage.createdAt).getTime() <= lastSeenTimes[targetUserId] + 5000) {
+        newMessage.status = "seen";
+      } else if (pendingStatusUpdates[newMessage._id]) {
+        newMessage.status = pendingStatusUpdates[newMessage._id];
+      }
+
       idb.saveMessage(newMessage, me._id);
 
       set((state) => {
@@ -196,8 +205,12 @@ export const useChatStore = create((set, get) => ({
           }
         }
 
+        const newPending = { ...state.pendingStatusUpdates };
+        delete newPending[newMessage._id];
+
         return {
           messages: newMessages,
+          pendingStatusUpdates: newPending,
           users: state.users.map(u =>
             u._id === targetUserId ? { ...u, lastMessage: newMessage } : u
           ).sort((a, b) => {
@@ -278,6 +291,12 @@ export const useChatStore = create((set, get) => ({
   },
 
   clearAllUnreads: () => {
+    const { users } = get();
+    users.forEach((u) => {
+      if (u.unreadCount > 0) {
+        axiosInstance.put(`/messages/mark-read/${u._id}`).catch(() => {});
+      }
+    });
     set((state) => ({
       users: state.users.map((u) => ({ ...u, unreadCount: 0 }))
     }));
@@ -356,6 +375,7 @@ export const useChatStore = create((set, get) => ({
     if (!socket) return;
 
     socket.off("profileUpdated");
+    socket.off("profilePhotoPrivacyUpdated");
     socket.off("newMessage");
 
     socket.on("profileUpdated", (updatedUser) => {
@@ -488,22 +508,31 @@ export const useChatStore = create((set, get) => ({
 
     socket.on("messageDelivered", ({ messageId }) => {
       // The other person's device received our message
-      set((state) => ({
-        messages: state.messages.map((m) =>
-          m._id === messageId && m.status === "sent" ? { ...m, status: "delivered" } : m
-        ),
-        users: state.users.map((u) => {
-          if (u.lastMessage && u.lastMessage._id === messageId) {
-            return { ...u, lastMessage: { ...u.lastMessage, status: "delivered" } };
-          }
-          return u;
-        })
-      }));
+      set((state) => {
+        const exists = state.messages.some(m => m._id === messageId);
+        if (!exists) {
+          return {
+            pendingStatusUpdates: { ...state.pendingStatusUpdates, [messageId]: "delivered" }
+          };
+        }
+        return {
+          messages: state.messages.map((m) =>
+            m._id === messageId && m.status === "sent" ? { ...m, status: "delivered" } : m
+          ),
+          users: state.users.map((u) => {
+            if (u.lastMessage && u.lastMessage._id === messageId) {
+              return { ...u, lastMessage: { ...u.lastMessage, status: "delivered" } };
+            }
+            return u;
+          })
+        };
+      });
     });
 
     socket.on("messagesSeen", ({ receiverId }) => {
       // The other person saw our messages
       set((state) => ({
+        lastSeenTimes: { ...state.lastSeenTimes, [receiverId]: Date.now() },
         messages: state.messages.map((m) =>
           m.receiverId === receiverId ? { ...m, status: "seen" } : m
         ),

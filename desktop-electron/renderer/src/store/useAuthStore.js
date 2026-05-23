@@ -223,6 +223,7 @@ export const useAuthStore = create((set, get) => ({
     const newSocket = io(BASE_URL, {
       query: { userId: authUser._id },
       auth: { token },
+      withCredentials: true,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,

@@ -1,6 +1,6 @@
 {
   "name": "chatty-desktop",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Chatty — Native Desktop App powered by Electron",
   "main": "main/main.js",
   "scripts": {
