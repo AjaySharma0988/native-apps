@@ -235,7 +235,11 @@ export const useAuthStore = create((set, get) => ({
     set({ socket: newSocket });
 
     newSocket.on("connect", () => {
-      console.log("[Socket] Connected to server successfully");
+      console.log(`[Socket:Electron:DEBUG] Socket connected with ID: ${newSocket.id}`);
+      
+      // Re-register connection on server to ensure online status is broadcasted
+      newSocket.emit("force:sync:presence");
+
       import("./useChatStore").then(({ useChatStore }) => {
         const chatStore = useChatStore.getState();
         chatStore.syncPendingMessages?.();
@@ -257,7 +261,10 @@ export const useAuthStore = create((set, get) => ({
       console.error("[Socket] Connection error:", err.message);
     });
 
-    newSocket.on("getOnlineUsers", (userIds) => set({ onlineUsers: userIds }));
+    newSocket.on("getOnlineUsers", (userIds) => {
+      console.log(`[Socket:Electron:DEBUG] Received getOnlineUsers. Count: ${userIds.length}`);
+      set({ onlineUsers: userIds });
+    });
 
     newSocket.on("call:incoming-group", (data) => {
       import("./useCallStore").then(({ useCallStore }) => {
@@ -359,9 +366,16 @@ export const useAuthStore = create((set, get) => ({
         if (socket && !socket.connected) {
           console.log("[Socket] Browser online, reconnecting socket...");
           socket.connect();
+        } else if (socket && socket.connected) {
+          console.log(`[Socket:Electron:DEBUG] Window focus/wake event detected. Emitting force:sync:presence`);
+          socket.emit("force:sync:presence");
         }
       };
       window.addEventListener("online", onlineHandler);
+      window.addEventListener("focus", onlineHandler);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") onlineHandler();
+      });
     }
 
     // Power resume (Electron only)
@@ -371,6 +385,9 @@ export const useAuthStore = create((set, get) => ({
         if (socket && !socket.connected) {
           console.log("[Socket] System woke up, reconnecting socket...");
           socket.connect();
+        } else if (socket && socket.connected) {
+          console.log(`[Socket:Electron:DEBUG] System woke up. Emitting force:sync:presence`);
+          socket.emit("force:sync:presence");
         }
       });
     }
@@ -379,6 +396,7 @@ export const useAuthStore = create((set, get) => ({
   disconnectSocket: () => {
     if (onlineHandler) {
       window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("focus", onlineHandler);
       onlineHandler = null;
     }
     if (powerResumeCleanup) {
